@@ -1,1 +1,1 @@
-Python script to make the Google API calls and input data into the MySQL database.
+Python script to make the Google API calls and input and delete data from the MySQL database.
