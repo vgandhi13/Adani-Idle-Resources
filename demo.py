@@ -19,6 +19,13 @@ if conn.is_connected():
     print('Connected to MySQL database')
     print()
 
+# Create a cursor object to execute SQL queries
+#a cursor is an object that allows you to retrieve and manipulate data in a database.
+cursor = conn.cursor()
+clearTable = 'DELETE FROM unused_disks'
+cursor.execute(clearTable)      #this will first empty the table in database
+conn.commit()
+
 with open('AP1-Data.json', 'r') as file:
     API1_Object = json.load(file)
 
@@ -47,9 +54,6 @@ with open('dummyData.json', 'r') as file:
 
 if 'insights' in arrObject:
     print('existent') 
-    # Create a cursor object to execute SQL queries
-    #a cursor is an object that allows you to retrieve and manipulate data in a database.
-    cursor = conn.cursor()
 
     # Execute a SELECT query to retrieve data from the table
     table_name = 'unused_disks'  # Replace with the actual table name
