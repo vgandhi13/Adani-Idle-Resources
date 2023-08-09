@@ -29,7 +29,7 @@ conn = mysql.connector.connect(
     database=db_config['database']
 )
 
-costPerDisk = dict()
+
 if conn.is_connected():
     print('Connected to MySQL database')
     print()
@@ -66,92 +66,88 @@ credentials.refresh(request)
 # Get the access token
 access_token = credentials.token
 
+
+#it group and corp are ael, and have the same id
+#natural and naturalrs have the same id - represented by natural
+#21 will be other. those that dont have specified bu, will be put here
+business_units = {'adl':1, 'aeml':2, 'agel': 3, 'airport': 4, 'anil': 5, 'apac': 6, 'apsez': 7, 'atgl': 8, 'bunkering': 9, 'capital': 10, 'it': 11, 'group':11, 'corp': 11, 'defense': 12, 'howe':13, 'mpl':14, 'mspvl': 15, 'natural': 16, 'naturalrs':16, 'power':17, 'realty':18, 'transmission': 19, 'systemgsuite': 20, 'other': 21}
+
 payload = {}
 headers = {
     'Authorization': f'Bearer {access_token}'
 }
 
 data_frames = []  # Store response data frames for each project
-recommender = "google.compute.disk.IdleResourceRecommender"
 
+json_data = None
+arrObject = None
+
+zipped_data = [("google.compute.disk.IdleResourceRecommender", "google.compute.disk.IdleResourceInsight",'unused_disks'), ("google.compute.image.IdleResourceRecommender", "google.compute.image.IdleResourceInsight", 'unused_images'), ( "google.compute.address.IdleResourceRecommender", "google.compute.address.IdleResourceInsight", 'unused_ip')]
 #Iterate over projects and locations
 
 for gcp_project_id in projects_list:
+        
+        business_unit = gcp_project_id.split('-')[0]
         for location in locations:
-            url = f"https://recommender.googleapis.com/v1/projects/{gcp_project_id}/locations/{location}/recommenders/{recommender}/recommendations"
-            # print(url)
-            response = requests.request("GET", url, headers=headers, data=payload)
-            API1_Object = response.json()
-            print(API1_Object)
-            print(f"project {gcp_project_id} response {response.text}")
+            for recommender, insight_type, table in zipped_data:
+                costPerDisk = dict()
+                url = f"https://recommender.googleapis.com/v1/projects/{gcp_project_id}/locations/{location}/recommenders/{recommender}/recommendations"
+                # print(url)
+                response = requests.request("GET", url, headers=headers, data=payload)
+                API1_Object = response.json()
+                print(API1_Object)
+                print(f"project {gcp_project_id} response {response.text}")
 
-################################################
-#when using this comment out the code on line 34 and 35
-## Make the API call and receive the JSON response
+                if 'recommendations' in API1_Object:
 
-#response = make_api_call()  # Replace with your API call and response handling
+                    for obj in API1_Object['recommendations']:
+                        nanos = -1 * obj['primaryImpact']['costProjection']['cost']['nanos']
+                        units = 0
+                        if 'units' in obj['primaryImpact']['costProjection']['cost']:
+                            units = obj['primaryImpact']['costProjection']['cost']['units']
+                        if units == 0:
+                            moneyPerMonth = nanos / 1000000000
+                        else:
+                            moneyPerMonth = int(units[1:]) + (nanos / 1000000000)
+                        costPerDisk[obj['content']['overview']['resourceName']] = moneyPerMonth
 
-# Parse the JSON response
-#json_data = json.loads(response)
-#####################################################
+                print(costPerDisk)
 
-            if 'recommendations' in API1_Object:
+                url = f"https://recommender.googleapis.com/v1beta1/projects/{gcp_project_id}/locations/{location}/insightTypes/{insight_type}/insights"
+                # print(url)
+                response = requests.request("GET", url, headers=headers, data=payload)
+                arrObject = response.json()
+                if 'insights' in arrObject:
+                    print('existent') 
 
-                for obj in API1_Object['recommendations']:
-                    nanos = -1 * obj['primaryImpact']['costProjection']['cost']['nanos']
-                    units = 0
-                    if 'units' in obj['primaryImpact']['costProjection']['cost']:
-                        units = obj['primaryImpact']['costProjection']['cost']['units']
-                    if units == 0:
-                        moneyPerMonth = nanos / 1000000000
-                    else:
-                        moneyPerMonth = int(units[1:]) + (nanos / 1000000000)
-                    costPerDisk[obj['content']['overview']['resourceName']] = moneyPerMonth
+                    # Execute a SELECT query to retrieve data from the table
+                    table_name = 'unused_disks'  # Replace with the actual table name
+                    #query = f"SELECT * FROM {table_name}"   #The {table_name} expression inside the f-string is replaced with the value stored in the table_name variable. So the resulting query string will be "SELECT * FROM bu_names" if table_name is set to 'bu_names'.
+                    # insertInUnusedDisksQuery = f"INSERT INTO unused_disks (disk_name, description, Cloud_id, BU_id, Project_name, Last_Refresh_Time, Last_Use_Time, isBlank) VALUES ({json_data['description'].split(' ')[1][1:-1]}, {json_data['description']}, 1, 0, 'Get from API', {json_data['content']['diskLastUseTime'][0:10]}, {json_data['lastRefreshTime'][0:10]}, {json_data['content']['isBlank']})"
+                    for json_data in arrObject['insights']:
+                        insertInUnusedDisksQuery = f"INSERT INTO {table} (name, description, Cloud_id, BU_id, Project_name, Last_Refresh_Time, Last_Use_Time, isBlank, Cost_Saved) VALUES (%s, %s, 1, %s, %s, %s, %s, %s, %s)"
 
-            print(costPerDisk)
+                        values = (
+                            json_data['description'].split(' ')[1][1:-1],
+                            json_data['description'],
+                            business_units[business_unit] if business_unit in business_units else business_units['other'],
+                            gcp_project_id,
+                            json_data['content']['diskLastUseTime'][0:10],
+                            json_data['lastRefreshTime'][0:10],
+                            json_data['content']['isBlank'],
+                            costPerDisk[json_data['description'].split(' ')[1][1:-1]] if json_data['description'].split(' ')[1][1:-1] in costPerDisk else 0
+                        )
 
-#For Dummy data
-# Load the JSON data from the file, 
-# CHANGE THIS
-json_data = None
-arrObject = None
-insight_type = "google.compute.disk.IdleResourceInsight"
+                        cursor.execute(insertInUnusedDisksQuery, values)
+                        conn.commit()
 
-for gcp_project_id in projects_list:
-        for location in locations:
-            url = f"https://recommender.googleapis.com/v1beta1/projects/{gcp_project_id}/locations/{location}/insightTypes/{insight_type}/insights"
-            # print(url)
-            response = requests.request("GET", url, headers=headers, data=payload)
-            arrObject = response.json()
-            print(arrObject)
+                    #execute() method of the cursor object is used to execute a SQL query, and the fetchall() method retrieves all rows from the result set.
+                    # Close the cursor and connection Closing the cursor is necessary to release any resources held by the cursor and to free up the database server resources.
+                    
+                else:
+                    print('non-existent') 
 
-            if 'insights' in arrObject:
-                print('existent') 
-
-                # Execute a SELECT query to retrieve data from the table
-                table_name = 'unused_disks'  # Replace with the actual table name
-                #query = f"SELECT * FROM {table_name}"   #The {table_name} expression inside the f-string is replaced with the value stored in the table_name variable. So the resulting query string will be "SELECT * FROM bu_names" if table_name is set to 'bu_names'.
-                # insertInUnusedDisksQuery = f"INSERT INTO unused_disks (disk_name, description, Cloud_id, BU_id, Project_name, Last_Refresh_Time, Last_Use_Time, isBlank) VALUES ({json_data['description'].split(' ')[1][1:-1]}, {json_data['description']}, 1, 0, 'Get from API', {json_data['content']['diskLastUseTime'][0:10]}, {json_data['lastRefreshTime'][0:10]}, {json_data['content']['isBlank']})"
-                for json_data in arrObject['insights']:
-                    insertInUnusedDisksQuery = "INSERT INTO unused_disks (disk_name, description, Cloud_id, BU_id, Project_name, Last_Refresh_Time, Last_Use_Time, isBlank, Cost_Saved) VALUES (%s, %s, 1, 2, 'Get from API', %s, %s, %s, %s)"
-
-                    values = (
-                        json_data['description'].split(' ')[1][1:-1],
-                        json_data['description'],
-                        json_data['content']['diskLastUseTime'][0:10],
-                        json_data['lastRefreshTime'][0:10],
-                        json_data['content']['isBlank'],
-                        costPerDisk[json_data['description'].split(' ')[1][1:-1]]
-                    )
-
-                    cursor.execute(insertInUnusedDisksQuery, values)
-                    conn.commit()
-
-                #execute() method of the cursor object is used to execute a SQL query, and the fetchall() method retrieves all rows from the result set.
-                # Close the cursor and connection Closing the cursor is necessary to release any resources held by the cursor and to free up the database server resources.
-                
-            else:
-                print('non-existent') 
+            
 
 cursor.close()
 conn.close()

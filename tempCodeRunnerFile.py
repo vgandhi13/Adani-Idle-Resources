@@ -1,1 +1,0 @@
-        insertInUnusedDisksQuery = "INSERT INTO unused_disks (disk_name, description, Cloud_id, BU_id, Project_name, Last_Refresh_Time, Last_Use_Time, isBlank, Cost_Saved) VALUES (%s, %s, 1, 18, 'Get from API', %s, %s, %s, %s)"
